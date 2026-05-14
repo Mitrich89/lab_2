@@ -1,6 +1,4 @@
-import sys
-import re
-import math
+import sys, re, math
 from dataclasses import dataclass
 from typing import List, Union, Optional, Tuple
 
@@ -27,45 +25,40 @@ class UnaryOp:
 
 AST = Union[Number, BinOp, UnaryOp]
 
-# ---------- Лексер ----------
+# ---------- Лексер (научная нотация) ----------
 TOKEN_REGEX = re.compile(r"""
     \s*
     (?:
-        (\d+\.?\d*)                 # число (без экспоненты)
-      | ([+\-*/()])                 # операторы и скобки (^ пока нет)
-      | ([a-zA-Z_][a-zA-Z_0-9]*)    # идентификатор (пока ошибка)
-      | (.)                         # недопустимый символ
+        (\d+\.?\d*(?:[eE][+-]?\d+)?)   # число с экспонентой
+      | ([+\-*/^()])                   # операторы (добавлен ^)
+      | ([a-zA-Z_][a-zA-Z_0-9]*)       # идентификатор (пока ошибка)
+      | (.)                            # недопустимый символ
     )
 """, re.VERBOSE)
 
 def tokenize(expr: str) -> List[Tuple[str, object]]:
     tokens = []
     for m in TOKEN_REGEX.finditer(expr):
-        if m.group(1) is not None:          # число
+        if m.group(1) is not None:
             tokens.append(('NUMBER', float(m.group(1))))
-        elif m.group(2) is not None:        # оператор/скобка
-            op = m.group(2)
-            if op == '^':
-                raise ParseError(f"Оператор '^' не поддерживается")
-            tokens.append(('OP', op))
-        elif m.group(3) is not None:        # идентификатор
+        elif m.group(2) is not None:
+            tokens.append(('OP', m.group(2)))
+        elif m.group(3) is not None:
             raise ParseError(f"Идентификаторы не поддерживаются: '{m.group(3)}'")
-        elif m.group(4) is not None:        # недопустимый
+        elif m.group(4) is not None:
             raise ParseError(f"Недопустимый символ: '{m.group(4)}'")
     return tokens
 
-# ---------- Парсер ----------
+# ---------- Парсер (добавлены power и скобки) ----------
 class Parser:
-    def __init__(self, tokens: List[tuple]):
+    def __init__(self, tokens):
         self.tokens = tokens
         self.pos = 0
 
-    def peek(self) -> Optional[tuple]:
-        if self.pos < len(self.tokens):
-            return self.tokens[self.pos]
-        return None
+    def peek(self):
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else None
 
-    def consume(self, expected_type: Optional[str] = None, expected_value: Optional[str] = None) -> tuple:
+    def consume(self, expected_type=None, expected_value=None):
         tok = self.peek()
         if tok is None:
             raise ParseError("Неожиданный конец выражения")
@@ -76,13 +69,13 @@ class Parser:
         self.pos += 1
         return tok
 
-    def parse(self) -> AST:
+    def parse(self):
         tree = self.expr()
         if self.pos != len(self.tokens):
             raise ParseError("Лишние символы после выражения")
         return tree
 
-    def expr(self) -> AST:
+    def expr(self):
         left = self.term()
         while self.peek() and self.peek()[0] == 'OP' and self.peek()[1] in ('+', '-'):
             op = self.consume('OP')[1]
@@ -90,7 +83,7 @@ class Parser:
             left = BinOp(op, left, right)
         return left
 
-    def term(self) -> AST:
+    def term(self):
         left = self.unary()
         while self.peek() and self.peek()[0] == 'OP' and self.peek()[1] in ('*', '/'):
             op = self.consume('OP')[1]
@@ -98,30 +91,45 @@ class Parser:
             left = BinOp(op, left, right)
         return left
 
-    def unary(self) -> AST:
+    def unary(self):
         tok = self.peek()
         if tok and tok[0] == 'OP' and tok[1] in ('+', '-'):
             op = self.consume('OP')[1]
             operand = self.unary()
             return UnaryOp(op, operand)
-        else:
-            return self.atom()
+        return self.power()
 
-    def atom(self) -> AST:
+    def power(self):
+        left = self.atom()
+        if self.peek() and self.peek()[0] == 'OP' and self.peek()[1] == '^':
+            self.consume('OP', '^')
+            # необязательный унарный знак перед показателем
+            sign = None
+            if self.peek() and self.peek()[0] == 'OP' and self.peek()[1] in ('+', '-'):
+                sign = self.consume('OP')[1]
+            right = self.power()
+            if sign == '-':
+                right = UnaryOp('-', right)
+            # унарный '+' игнорируется
+            return BinOp('^', left, right)
+        return left
+
+    def atom(self):
         tok = self.peek()
         if tok is None:
             raise ParseError("Неожиданный конец выражения")
         if tok[0] == 'NUMBER':
             return Number(self.consume('NUMBER')[1])
         elif tok[0] == 'OP' and tok[1] == '(':
-            raise ParseError("Скобки не поддерживаются")
+            self.consume('OP', '(')
+            expr = self.expr()
+            self.consume('OP', ')')
+            return expr
         else:
             raise ParseError(f"Неожиданный токен: {tok}")
 
 def parse(expr: str) -> AST:
-    tokens = tokenize(expr)
-    parser = Parser(tokens)
-    return parser.parse()
+    return Parser(tokenize(expr)).parse()
 
 # ---------- Вычислитель ----------
 def evaluate(ast: AST) -> float:
@@ -140,11 +148,22 @@ def evaluate(ast: AST) -> float:
             if right == 0:
                 raise EvalError("Деление на 0")
             res = left / right
+        elif ast.op == '^':
+            if left < 0 and not right.is_integer():
+                raise EvalError("Отрицательное число в нецелой степени не определено в действительных числах")
+            try:
+                res = left ** right
+                return res
+            except OverflowError:
+                raise EvalError("Арифметическое переполнение")     
         else:
             raise EvalError(f"Неизвестная операция: {ast.op}")
+
+        # Проверка переполнения для любой бинарной операции
         if math.isinf(res) or math.isnan(res):
             raise EvalError("Арифметическое переполнение")
         return res
+
     elif isinstance(ast, UnaryOp):
         val = evaluate(ast.operand)
         res = -val if ast.op == '-' else val
