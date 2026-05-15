@@ -45,6 +45,12 @@ class TestParserStage3(unittest.TestCase):
         with self.assertRaises(ParseError):
             parse("x")
 
+    def test_arcctg_function(self):
+        """Парсинг arcctg(1)"""
+        ast = parse("arcctg(1)")
+        expected = FuncCall('arcctg', Number(1.0))
+        self.assertEqual(ast, expected)
+
 # ==================== Модульные тесты вычислителя ====================
 class TestEvaluatorStage3(unittest.TestCase):
     """Тесты вычислителя: функции, область определения, углы"""
@@ -82,6 +88,34 @@ class TestEvaluatorStage3(unittest.TestCase):
         with self.assertRaises(EvalError):
             evaluate(parse("(-2)^0.5"))
 
+    def test_arcctg_radians(self):
+        """arcctg в радианах (по умолчанию)"""
+        # arcctg(0) = π/2
+        self.assertAlmostEqual(evaluate(parse("arcctg(0)"), 'radian'), math.pi/2)
+        # arcctg(1) = π/4
+        self.assertAlmostEqual(evaluate(parse("arcctg(1)"), 'radian'), math.pi/4)
+        # arcctg(-1) = 3π/4
+        self.assertAlmostEqual(evaluate(parse("arcctg(-1)"), 'radian'), 3*math.pi/4)
+
+    def test_arcctg_degrees(self):
+        """arcctg в градусах"""
+        self.assertAlmostEqual(evaluate(parse("arcctg(0)"), 'degree'), 90.0)
+        self.assertAlmostEqual(evaluate(parse("arcctg(1)"), 'degree'), 45.0)
+        self.assertAlmostEqual(evaluate(parse("arcctg(-1)"), 'degree'), 135.0)
+
+    def test_arcctg_large_values(self):
+        """Поведение при больших аргументах"""
+        # arcctg(1e10) → 0 (радианы)
+        res_pos = evaluate(parse("arcctg(1e10)"), 'radian')
+        self.assertAlmostEqual(res_pos, 0.0, places=5)
+        # arcctg(-1e10) → π (радианы)
+        res_neg = evaluate(parse("arcctg(-1e10)"), 'radian')
+        self.assertAlmostEqual(res_neg, math.pi, places=5)
+
+    def test_arcctg_zero_degree(self):
+        """arcctg(0) в градусах = 90"""
+        self.assertEqual(evaluate(parse("arcctg(0)"), 'degree'), 90.0)
+
 # ==================== Интеграционные тесты ====================
 class TestIntegration(unittest.TestCase):
     """Совместная работа парсера и вычислителя"""
@@ -107,6 +141,13 @@ class TestIntegration(unittest.TestCase):
     def test_sqrt_ln_e(self):
         """sqrt(ln(e)) = 1"""
         self.assertAlmostEqual(evaluate(parse("sqrt(ln(e))")), 1.0)
+
+    def test_arcctg_with_expression(self):
+        """Выражение с arcctg: arcctg(1) + arcctg(2)"""
+        expr = "arcctg(1) + arcctg(2)"
+        # Значение в радианах: π/4 + arctan(1/2) ≈ 0.785398 + 0.463648 = 1.249046
+        expected = math.atan2(1, 1) + math.atan2(1, 2)  # альтернативная формула
+        self.assertAlmostEqual(evaluate(parse(expr)), expected, places=5)
 
 # ==================== Функциональные тесты (CLI) ====================
 class TestFunctional(unittest.TestCase):
@@ -173,6 +214,24 @@ class TestFunctional(unittest.TestCase):
         """ln(0) должно вызвать ошибку"""
         proc = self.run_calc("ln(0)")
         self.assertNotEqual(proc.returncode, 0)
+    
+    def test_arcctg_degrees_cli(self):
+        """arcctg(0) в градусах через CLI"""
+        proc = self.run_calc("arcctg(0)", angle_unit='degree')
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(float(proc.stdout.strip()), 90.0)
+
+    def test_arcctg_radians_cli(self):
+        """arcctg(1) в радианах через CLI (по умолчанию)"""
+        proc = self.run_calc("arcctg(1)")
+        self.assertEqual(proc.returncode, 0)
+        self.assertAlmostEqual(float(proc.stdout.strip()), math.pi/4)
+
+    def test_arcctg_negative_cli(self):
+        """arcctg(-1) в градусах"""
+        proc = self.run_calc("arcctg(-1)", angle_unit='degree')
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(float(proc.stdout.strip()), 135.0)
 
 # ==================== Нагрузочные тесты ====================
 class TestLoad(unittest.TestCase):
@@ -340,6 +399,14 @@ class TestLoad(unittest.TestCase):
         proc, elapsed = self.run_calc(expr)
         self.assertLess(elapsed, 0.5)
         self.assertEqual(proc.returncode, 0)
+    
+    def test_arcctg_performance(self):
+        """Вычисление arcctg от большого аргумента не должно тормозить"""
+        expr = "arcctg(1e100)"
+        proc, elapsed = self.run_calc(expr)
+        self.assertLess(elapsed, 0.4)
+        self.assertEqual(proc.returncode, 0)
+        self.assertAlmostEqual(float(proc.stdout.strip()), 0.0, places=5)
 
 if __name__ == '__main__':
     import sys
