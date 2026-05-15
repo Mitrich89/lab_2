@@ -68,7 +68,7 @@ def tokenize(expr: str) -> list:
     return tokens
 
 # ---------- Парсер ----------
-FUNCTIONS = {'sqrt', 'sin', 'cos', 'tg', 'ctg', 'ln', 'exp', 'arcctg'}
+FUNCTIONS = {'sqrt', 'sin', 'cos', 'tg', 'ctg', 'ln', 'exp', 'asin', 'arcctg'}
 CONSTANTS = {'pi', 'e'}
 
 class Parser:
@@ -243,7 +243,7 @@ def evaluate(ast: AST, angle_unit: str = 'radian') -> float:
                 else:
                     res = math.atan(1.0 / arg) + math.pi
             if angle_unit == 'degree':
-                res = math.degrees(res)   
+                res = math.degrees(res) 
         elif ast.name == 'sqrt':
             if arg < 0:
                 raise EvalError("Квадратный корень из отрицательного числа")
