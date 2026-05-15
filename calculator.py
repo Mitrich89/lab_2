@@ -68,7 +68,7 @@ def tokenize(expr: str) -> list:
     return tokens
 
 # ---------- Парсер ----------
-FUNCTIONS = {'sqrt', 'sin', 'cos', 'tg', 'ctg', 'ln', 'exp'}
+FUNCTIONS = {'sqrt', 'sin', 'cos', 'tg', 'ctg', 'ln', 'exp', 'asin'}
 CONSTANTS = {'pi', 'e'}
 
 class Parser:
@@ -220,7 +220,7 @@ def evaluate(ast: AST, angle_unit: str = 'radian') -> float:
         return res
     elif isinstance(ast, FuncCall):
         arg = evaluate(ast.arg, angle_unit)
-        if ast.name in ('sin', 'cos', 'tg', 'ctg'):
+        if ast.name in ('sin', 'cos', 'tg', 'ctg', 'asin'):
             if angle_unit == 'degree':
                 arg = math.radians(arg)
             if ast.name == 'sin':
@@ -229,6 +229,10 @@ def evaluate(ast: AST, angle_unit: str = 'radian') -> float:
                 res = math.cos(arg)
             elif ast.name == 'tg':
                 res = math.tan(arg)
+            elif ast.name == 'asin':
+                if not (-1 <= arg <= 1):
+                    raise EvalError("Арксинус определён только на [-1, 1]")
+                res = math.asin(arg)
             elif ast.name == 'ctg':
                 t = math.tan(arg)
                 if t == 0:

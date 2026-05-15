@@ -235,6 +235,12 @@ class TestLoad(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stdout.strip(), "1.0")
 
+    def test_asin(self):
+        self.assertAlmostEqual(evaluate(parse("asin(0)")), 0.0)
+        self.assertAlmostEqual(evaluate(parse("asin(1)")), math.pi/2)
+        with self.assertRaises(EvalError):
+            evaluate(parse("asin(2)"))
+
     # def test_deeply_nested_parentheses(self):
     #     """Глубоко вложенные скобки ((...(1)...)) 200 уровней < 250 мс"""
     #     expr = "(" * 200 + "1" + ")" * 200
